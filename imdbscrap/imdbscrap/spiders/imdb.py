@@ -1,5 +1,6 @@
 import scrapy
 import re
+from urllib.parse import urlparse, urlunparse
 
 
 class ImdbSpider(scrapy.Spider):
@@ -28,32 +29,66 @@ class ImdbSpider(scrapy.Spider):
             "actor_name" : row.xpath('.//td[2]/a/text()').get().strip(),
             "role_name" : row.xpath('.//td[@class="character"]/a/text()').get().strip()
             }
-            next_page = actor_url
-            if next_page is not None:
-                yield response.follow(next_page, callback=self.parse_actor)
-                
+            parsed_url = urlparse(actor_url)
+           
+            actor_path = parsed_url.path.rstrip('/') + '/fullcredits'
+            cleaned_url = urlunparse((parsed_url.scheme, parsed_url.netloc, actor_path, '', '', ''))
+            
+            
+           
+            bio_path = parsed_url.path.rstrip('/') + '/bio/'
+            bio_url = urlunparse((parsed_url.scheme, parsed_url.netloc, bio_path, '', '', ''))
+            
+            if cleaned_url is not None:
+                yield response.follow(cleaned_url, callback=self.parse_actor)
+            
+            yield response.follow(bio_url, callback=self.parse_bio)
+                            
     def parse_actor(self, response):
-       
-        section_xpath = '//*[@id="__next"]/main/div/section[1]/div/section/div/div[1]/div[4]/section[2]'
+  
+        filmography_xpath = '//*[@id="filmography"]/div[4]'
+
         
-        for movie in response.xpath(f'{section_xpath}//div[contains(@id, "accordion-item-producer-previous-projects")]/div/ul/li'):
-            movie_title = movie.xpath('./a/@aria-label').get()
-            movie_url = movie.xpath('./a/@href').get()
-            movie_year_xpath = './div[2]/div[2]/ul/li/span/text()'
-            movie_year_text = movie.xpath(movie_year_xpath).get()
-            movie_year = self.extract_year_from_text(movie_year_text)  
+        for movie in response.xpath(f'{filmography_xpath}/div[contains(@class, "filmo-row")]'):
+            movie_year_text = movie.xpath('./span[@class="year_column"]/text()').get().strip()
+            movie_year = self.extract_year_from_text(movie_year_text)
 
+            if movie_year and 1980 <= movie_year <= 1990:
 
-            if movie_year and 1980 <= movie_year <= 1989:
+                movie_title = movie.xpath('.//b/a/text()').get().strip()
+                movie_url = movie.xpath('.//b/a/@href').get()
+                
                 yield {
                     'movie_url': response.urljoin(movie_url),
                     'movie_title': movie_title,
                     'movie_year': movie_year,
                 }
+
     def extract_year_from_text(self, year_text):
-    # Assuming the year text is directly the year, convert to integer
+        # Convert the year text to an integer.
         try:
             return int(year_text)
         except ValueError:
-            # Log or handle cases where year_text does not convert cleanly
             return None
+        
+        
+    def parse_bio(self, response):
+        actor_name = response.xpath('//*[@id="__next"]/main/div/section/section/div[3]/section/section/div[2]/hgroup/h2/text()').get().strip()
+        
+        height_raw = response.xpath('//*[@id="height"]/div/div/div/text()').get()
+        height_in_meters = self.extract_height_in_meters(height_raw)
+        
+        if not height_in_meters is None: 
+            yield {
+                'actor_name': actor_name,
+                'height_in_meters': height_in_meters,
+            
+                }
+        
+    def extract_height_in_meters(self, height_raw):
+
+        if height_raw:
+            match = re.search(r'\((\d+\.\d+) m\)', height_raw)
+            if match:
+                return float(match.group(1))
+        return None
