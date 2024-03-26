@@ -14,9 +14,16 @@ es=Elasticsearch(
     [ELASTIC_API_URL_HOST], 
     http_auth=(ELASTIC_API_USERNAME, ELASTIC_API_PASSWORD))
 
+# Delete all documents using the Delete by Query API with a match_all query
+try:
+  response = es.delete_by_query(index='imdb', body={"query": {"match_all": {}}})
+  print(f"Deleted {response['deleted']:,} documents from index imdb.")
+except Exception as e:
+  print(f"Error deleting documents: {e}")
+
 
 # Read from imdb JSON file
-with open('./imdbscrap/spiders/imdb.json', 'r') as f:
+with open('./imdbscrap/spiders/data.json', 'r') as f:
     data = json.load(f)
 
 # Iterate over each object in the JSON data
